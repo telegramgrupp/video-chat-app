@@ -27,7 +27,10 @@ const ICE_SERVERS = {
       credential: 'openrelayproject'
     }
   ],
-  iceCandidatePoolSize: 10
+  iceCandidatePoolSize: 10,
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require',
+  iceTransportPolicy: 'all'
 };
 
 export const createPeerConnection = (
@@ -37,15 +40,25 @@ export const createPeerConnection = (
   const connection = new RTCPeerConnection(configuration);
   
   connection.oniceconnectionstatechange = () => {
-    console.warn(`ICE Connection State changed to: ${connection.iceConnectionState}`);
+    console.log(`ICE Connection State changed to: ${connection.iceConnectionState}`);
   };
 
   connection.onconnectionstatechange = () => {
-    console.warn(`Connection State changed to: ${connection.connectionState}`);
+    console.log(`Connection State changed to: ${connection.connectionState}`);
   };
 
   connection.onsignalingstatechange = () => {
-    console.warn(`Signaling State changed to: ${connection.signalingState}`);
+    console.log(`Signaling State changed to: ${connection.signalingState}`);
+  };
+
+  connection.onicegatheringstatechange = () => {
+    console.log(`ICE Gathering State changed to: ${connection.iceGatheringState}`);
+  };
+
+  connection.onicecandidate = (event) => {
+    if (event.candidate) {
+      console.log('New ICE candidate:', event.candidate.candidate);
+    }
   };
 
   return { userId, connection };
@@ -55,17 +68,30 @@ export const addTracksToConnection = (
   connection: RTCPeerConnection,
   stream: MediaStream
 ): void => {
-  const senders = connection.getSenders();
-  const tracks = stream.getTracks();
+  try {
+    const senders = connection.getSenders();
+    const tracks = stream.getTracks();
 
-  tracks.forEach((track) => {
-    const existingSender = senders.find(sender => sender.track?.kind === track.kind);
-    if (existingSender) {
-      existingSender.replaceTrack(track);
-    } else {
-      connection.addTrack(track, stream);
-    }
-  });
+    tracks.forEach((track) => {
+      const existingSender = senders.find(sender => sender.track?.kind === track.kind);
+      if (existingSender) {
+        existingSender.replaceTrack(track).catch(err => {
+          console.error('Error replacing track:', err);
+          throw err;
+        });
+      } else {
+        try {
+          connection.addTrack(track, stream);
+        } catch (err) {
+          console.error('Error adding track:', err);
+          throw err;
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Error in addTracksToConnection:', err);
+    throw err;
+  }
 };
 
 export const createOffer = async (
@@ -75,7 +101,8 @@ export const createOffer = async (
     const offer = await connection.createOffer({
       offerToReceiveAudio: true,
       offerToReceiveVideo: true,
-      iceRestart: true
+      iceRestart: true,
+      voiceActivityDetection: true
     });
     
     if (!offer || !offer.type) {
@@ -86,7 +113,7 @@ export const createOffer = async (
     return offer;
   } catch (err) {
     console.error('Error creating offer:', err);
-    return null;
+    throw err;
   }
 };
 
@@ -94,13 +121,21 @@ export const createAnswer = async (
   connection: RTCPeerConnection,
   offer: RTCSessionDescriptionInit
 ): Promise<RTCSessionDescriptionInit> => {
-  if (connection.signalingState !== 'have-remote-offer') {
-    throw new Error(`Invalid signaling state for creating answer: ${connection.signalingState}`);
-  }
+  try {
+    if (connection.signalingState !== 'have-remote-offer') {
+      throw new Error(`Invalid signaling state for creating answer: ${connection.signalingState}`);
+    }
 
-  const answer = await connection.createAnswer();
-  await connection.setLocalDescription(answer);
-  return answer;
+    const answer = await connection.createAnswer({
+      voiceActivityDetection: true
+    });
+    
+    await connection.setLocalDescription(answer);
+    return answer;
+  } catch (err) {
+    console.error('Error creating answer:', err);
+    throw err;
+  }
 };
 
 export const addIceCandidate = async (
@@ -120,25 +155,38 @@ export const addIceCandidate = async (
 
 export const handleConnectionStateChange = (
   connection: RTCPeerConnection,
-  onDisconnected: () => void
+  onDisconnected: () => void,
+  onConnected: () => void,
+  onFailed: () => void
 ): void => {
   connection.onconnectionstatechange = () => {
     const state = connection.connectionState;
-    console.warn(`Connection state changed to: ${state}`);
+    console.log(`Connection state changed to: ${state}`);
     
-    if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-      onDisconnected();
+    switch (state) {
+      case 'connected':
+        onConnected();
+        break;
+      case 'disconnected':
+        onDisconnected();
+        break;
+      case 'failed':
+        onFailed();
+        break;
     }
   };
 };
 
-export const handleTrackEvent = (
-  connection: RTCPeerConnection,
-  onTrack: (streams: readonly MediaStream[]) => void
-): void => {
-  connection.ontrack = (event) => {
-    if (event.streams && event.streams.length > 0) {
-      onTrack(event.streams);
+export const restartIce = async (connection: RTCPeerConnection): Promise<void> => {
+  try {
+    if (connection.signalingState !== 'stable') {
+      throw new Error('Cannot restart ICE in non-stable state');
     }
-  };
+    
+    const offer = await connection.createOffer({ iceRestart: true });
+    await connection.setLocalDescription(offer);
+  } catch (err) {
+    console.error('Error restarting ICE:', err);
+    throw err;
+  }
 };
