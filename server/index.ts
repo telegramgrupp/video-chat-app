@@ -28,19 +28,41 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
-// Define allowed origins
+// Define allowed origins with regex pattern for development URLs
 const allowedOrigins = [
   'http://localhost:5173',
+  'https://localhost:5173',
   'http://127.0.0.1:5173',
+  'https://127.0.0.1:5173',
   'http://localhost:3000',
+  'https://localhost:3000',
   'http://127.0.0.1:3000',
+  'https://127.0.0.1:3000',
   process.env.CLIENT_URL,
+  // Add WebContainer origin pattern
+  /.*\.webcontainer\.io$/,
+  // Add development pattern
+  /https?:\/\/localhost(:\d+)?$/
 ].filter(Boolean);
 
 // Enhanced CORS configuration with specific origins
 const corsOptions = {
   origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    // Check if the origin matches any allowed origins (including regex patterns)
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (allowedOrigin instanceof RegExp) {
+        return allowedOrigin.test(origin);
+      }
+      return allowedOrigin === origin;
+    });
+
+    if (isAllowed) {
       callback(null, true);
     } else {
       console.log('CORS blocked request from:', origin);
@@ -48,15 +70,20 @@ const corsOptions = {
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'X-Requested-With'],
+  credentials: true,
+  maxAge: 86400 // 24 hours
 };
 
+// Apply CORS middleware before other routes
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Initialize Socket.IO
-const io = initializeSocket(httpServer);
+// Add preflight handler for all routes
+app.options('*', cors(corsOptions));
+
+// Initialize Socket.IO with CORS settings
+const io = initializeSocket(httpServer, corsOptions);
 
 // Enhanced error handling and logging middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -71,4 +98,4 @@ httpServer.listen(PORT, () => {
 }).on('error', (error: Error) => {
   console.error('Server failed to start:', error);
   process.exit(1);
-}); 
+});

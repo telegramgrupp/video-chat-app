@@ -161,16 +161,16 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
-      transports: ['polling', 'websocket'], // Start with polling, then upgrade to websocket
+      transports: ['websocket', 'polling'], // Prioritize websocket over polling
       path: '/socket.io/',
       withCredentials: true,
       forceNew: true,
       autoConnect: true,
       upgrade: true,
       rememberUpgrade: true,
-      rejectUnauthorized: false,
+      rejectUnauthorized: process.env.NODE_ENV === 'production',
       extraHeaders: {
-        'Origin': import.meta.env.VITE_CLIENT_URL || 'http://localhost:5173'
+        'Origin': import.meta.env.VITE_CLIENT_URL || window.location.origin
       }
     });
 
