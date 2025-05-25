@@ -5,12 +5,12 @@ console.log('Supabase Environment Variables Check:');
 console.log('VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL ? '✓ Present' : '✗ Missing');
 console.log('VITE_SUPABASE_ANON_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY ? '✓ Present' : '✗ Missing');
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
-    'Missing Supabase environment variables. Please click the "Connect to Supabase" button in the top right corner.'
+    'Missing Supabase environment variables. Please click the "Connect to Supabase" button in the top right corner to set up your database connection.'
   );
 }
 
