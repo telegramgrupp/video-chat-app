@@ -2,10 +2,17 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { io, Socket } from 'socket.io-client';
 import { SocketEventMap } from '../types';
 
-// Log Socket.IO environment variables
-console.log('Socket.IO Environment Variables Check:');
-console.log('VITE_SOCKET_URL:', import.meta.env.VITE_SOCKET_URL);
-console.log('VITE_CLIENT_URL:', import.meta.env.VITE_CLIENT_URL);
+// Get the socket URL from environment variables or fallback to the current origin
+const getSocketUrl = () => {
+  const socketUrl = import.meta.env.VITE_SOCKET_URL;
+  if (!socketUrl) {
+    // If no explicit socket URL is provided, derive it from the current origin
+    const currentOrigin = window.location.origin;
+    // Replace the port with 3000 for the socket server
+    return currentOrigin.replace(/:\d+$/, ':3000');
+  }
+  return socketUrl;
+};
 
 interface Match {
   id: string;
@@ -147,12 +154,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   }, [currentMatch]);
 
   useEffect(() => {
-    const socketUrl = import.meta.env.VITE_SOCKET_URL;
-    if (!socketUrl) {
-      console.error('Socket URL not found in environment variables');
-      return;
-    }
-
+    const socketUrl = getSocketUrl();
     console.log('Attempting to connect to socket server:', socketUrl);
       
     const newSocket = io(socketUrl, {
@@ -161,17 +163,14 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'], // Start with polling, then upgrade to websocket
       path: '/socket.io/',
       withCredentials: true,
       forceNew: true,
       autoConnect: true,
       upgrade: true,
       rememberUpgrade: true,
-      rejectUnauthorized: false,
-      extraHeaders: {
-        'Origin': import.meta.env.VITE_CLIENT_URL || window.location.origin
-      }
+      rejectUnauthorized: false
     });
 
     socketRef.current = newSocket;
@@ -187,11 +186,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       console.error('Socket connection error:', err);
       setError(new Error('Connection error: ' + err.message));
       setIsConnected(false);
-      
-      if (err.message.includes('websocket')) {
-        console.log('WebSocket connection failed, falling back to polling');
-        newSocket.io.opts.transports = ['polling', 'websocket'];
-      }
       
       if (reconnectAttempts.current < maxReconnectAttempts) {
         reconnectAttempts.current++;

@@ -39,12 +39,14 @@ const allowedOrigins = [
   'http://127.0.0.1:3000',
   'https://127.0.0.1:3000',
   process.env.CLIENT_URL,
-  // Add WebContainer origin pattern - more permissive to handle dynamic subdomains
+  // Add WebContainer origin patterns
   /.+\.webcontainer\.io$/,
+  /.+\.local-credentialless\.webcontainer-api\.io$/,
   // Add development pattern
   /https?:\/\/localhost(:\d+)?$/,
-  // Allow all WebContainer origins during development
-  /.+\.local-credentialless\.webcontainer-api\.io$/
+  // Allow preview URLs
+  /.+\.preview\.app\.github\.dev$/,
+  /.+\.app\.github\.dev$/
 ].filter(Boolean);
 
 // Enhanced CORS configuration with specific origins
@@ -88,8 +90,20 @@ app.options('*', cors(corsOptions));
 const io = initializeSocket(httpServer, {
   ...corsOptions,
   allowRequest: (req, callback) => {
-    // Allow all requests during development
-    callback(null, true);
+    const origin = req.headers.origin;
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (allowedOrigin instanceof RegExp) {
+        return allowedOrigin.test(origin);
+      }
+      return allowedOrigin === origin;
+    });
+
+    callback(null, isAllowed);
   }
 });
 
