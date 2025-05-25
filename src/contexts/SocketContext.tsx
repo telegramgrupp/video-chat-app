@@ -161,14 +161,14 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
-      transports: ['websocket', 'polling'], // Prioritize websocket over polling
+      transports: ['websocket', 'polling'],
       path: '/socket.io/',
       withCredentials: true,
       forceNew: true,
       autoConnect: true,
       upgrade: true,
       rememberUpgrade: true,
-      rejectUnauthorized: process.env.NODE_ENV === 'production',
+      rejectUnauthorized: false,
       extraHeaders: {
         'Origin': import.meta.env.VITE_CLIENT_URL || window.location.origin
       }
@@ -187,6 +187,11 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       console.error('Socket connection error:', err);
       setError(new Error('Connection error: ' + err.message));
       setIsConnected(false);
+      
+      if (err.message.includes('websocket')) {
+        console.log('WebSocket connection failed, falling back to polling');
+        newSocket.io.opts.transports = ['polling', 'websocket'];
+      }
       
       if (reconnectAttempts.current < maxReconnectAttempts) {
         reconnectAttempts.current++;
