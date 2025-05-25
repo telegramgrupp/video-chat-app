@@ -4,7 +4,8 @@ import { SocketEventMap } from '../types';
 
 // Log Socket.IO environment variables
 console.log('Socket.IO Environment Variables Check:');
-console.log('VITE_SOCKET_URL:', import.meta.env.VITE_SOCKET_URL ? '✓ Present' : '✗ Missing');
+console.log('VITE_SOCKET_URL:', import.meta.env.VITE_SOCKET_URL);
+console.log('VITE_CLIENT_URL:', import.meta.env.VITE_CLIENT_URL);
 
 interface Match {
   id: string;
@@ -102,7 +103,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
-  // Engellenen kullanıcıları localStorage'dan yükle
   useEffect(() => {
     const savedBlockedUsers = localStorage.getItem('blockedUsers');
     if (savedBlockedUsers) {
@@ -110,7 +110,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     }
   }, []);
 
-  // Engellenen kullanıcıları localStorage'a kaydet
   useEffect(() => {
     localStorage.setItem('blockedUsers', JSON.stringify(blockedUsers));
   }, [blockedUsers]);
@@ -132,7 +131,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       const totalMatches = prev.totalMatches + 1;
       const successfulMatches = newMatch ? prev.successfulMatches + 1 : prev.successfulMatches;
       
-      // Ortalama bekleme süresini güncelle
       let averageWaitTime = prev.averageWaitTime;
       if (currentMatch?.startTime) {
         const waitTime = Date.now() - currentMatch.startTime.getTime();
@@ -158,39 +156,36 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     console.log('Attempting to connect to socket server:', socketUrl);
       
     const newSocket = io(socketUrl, {
-        reconnection: true,
-        reconnectionAttempts: maxReconnectAttempts,
+      reconnection: true,
+      reconnectionAttempts: maxReconnectAttempts,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'], // Start with polling, then upgrade to websocket
       path: '/socket.io/',
       withCredentials: true,
-        forceNew: true,
+      forceNew: true,
       autoConnect: true,
       upgrade: true,
       rememberUpgrade: true,
-      rejectUnauthorized: false
-      });
+      rejectUnauthorized: false,
+      extraHeaders: {
+        'Origin': import.meta.env.VITE_CLIENT_URL || 'http://localhost:5173'
+      }
+    });
 
     socketRef.current = newSocket;
 
     newSocket.on('connect', () => {
       console.log('📡 Socket connected:', newSocket.id);
-        setIsConnected(true);
+      setIsConnected(true);
       setError(null);
       reconnectAttempts.current = 0;
-      });
+    });
 
     newSocket.on('connect_error', (err) => {
       console.error('Socket connection error:', err);
-      console.error('Error details:', {
-        message: err.message,
-        description: err.description,
-        type: err.type,
-        context: err.context
-      });
-      setError(new Error('Bağlantı hatası: ' + err.message));
+      setError(new Error('Connection error: ' + err.message));
       setIsConnected(false);
       
       if (reconnectAttempts.current < maxReconnectAttempts) {
@@ -198,16 +193,15 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         console.log(`Reconnection attempt ${reconnectAttempts.current} of ${maxReconnectAttempts}`);
       } else {
         console.error('Max reconnection attempts reached');
-        setError(new Error('Maksimum yeniden bağlanma denemesi aşıldı. Lütfen sayfayı yenileyin.'));
+        setError(new Error('Maximum reconnection attempts reached. Please refresh the page.'));
       }
     });
 
     newSocket.on('disconnect', (reason) => {
       console.log('Socket disconnected:', reason);
-        setIsConnected(false);
+      setIsConnected(false);
         
       if (reason === 'io server disconnect' || reason === 'transport close') {
-        // Sunucu tarafından kapatıldı veya bağlantı kesildi
         if (reconnectAttempts.current < maxReconnectAttempts) {
           reconnectAttempts.current++;
           console.log(`Reconnection attempt ${reconnectAttempts.current} of ${maxReconnectAttempts}`);
@@ -224,60 +218,46 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
           }, 2000);
         } else {
           console.error('Max reconnection attempts reached');
-          setError(new Error('Maksimum yeniden bağlanma denemesi aşıldı. Lütfen sayfayı yenileyin.'));
+          setError(new Error('Maximum reconnection attempts reached. Please refresh the page.'));
         }
       }
     });
 
-    // Match olaylarını dinle
     newSocket.on('match:found', (data: MatchData) => {
-      console.log('🤝 Match found event received');
-      console.log('Raw data:', data);
-      console.log('Data type:', typeof data);
-      console.log('Data keys:', Object.keys(data));
+      console.log('🤝 Match found event received:', data);
       
-      // Veri doğrulama
       if (!data || typeof data !== 'object') {
         console.error('Invalid match data received: not an object');
-        setError(new Error('Geçersiz eşleşme verisi alındı.'));
+        setError(new Error('Invalid match data received.'));
         return;
       }
       
-      // Gerekli alanları kontrol et
       const { peerId, matchId, quality, startTime } = data;
-      
-      console.log('Extracted values:', {
-        peerId,
-        matchId,
-        quality,
-        startTime
-      });
       
       if (!peerId || typeof peerId !== 'string') {
         console.error('Invalid peerId in match data:', peerId);
-        setError(new Error('Geçersiz eşleşme verisi alındı.'));
+        setError(new Error('Invalid match data received.'));
         return;
       }
       
       if (!matchId || typeof matchId !== 'string') {
         console.error('Invalid matchId in match data:', matchId);
-        setError(new Error('Geçersiz eşleşme verisi alındı.'));
+        setError(new Error('Invalid match data received.'));
         return;
       }
       
       if (typeof quality !== 'number' || isNaN(quality)) {
         console.error('Invalid quality in match data:', quality);
-        setError(new Error('Geçersiz eşleşme verisi alındı.'));
+        setError(new Error('Invalid match data received.'));
         return;
       }
       
       if (!startTime || typeof startTime !== 'number' || isNaN(startTime)) {
         console.error('Invalid startTime in match data:', startTime);
-        setError(new Error('Geçersiz eşleşme verisi alındı.'));
+        setError(new Error('Invalid match data received.'));
         return;
       }
       
-      // Match verilerini güncelle
       setCurrentMatch({
         id: matchId,
         peerId: peerId,
@@ -285,43 +265,39 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         startTime: new Date(startTime)
       });
       
-      // Arama durumunu güncelle
-        setIsSearching(false);
+      setIsSearching(false);
       updateMatchStats(true);
       
-      // Eşleşme kalitesine göre kullanıcıya bilgi ver
       if (quality < 0.5) {
-        setError(new Error('Düşük kaliteli eşleşme. Atlayabilirsiniz.'));
+        setError(new Error('Low quality match. You may want to skip.'));
       }
-      });
+    });
 
     newSocket.on('match:cancelled', () => {
-          console.log('⏹️ Match cancelled by peer');
+      console.log('⏹️ Match cancelled by peer');
       setCurrentMatch(null);
-        setIsSearching(false);
+      setIsSearching(false);
       updateMatchStats(false);
-      });
+    });
 
     newSocket.on('match:timeout', () => {
       console.log('⏰ Match search timed out');
-      setError(new Error('Eşleşme zaman aşımına uğradı. Lütfen tekrar deneyin.'));
-        setIsSearching(false);
-      });
+      setError(new Error('Match search timed out. Please try again.'));
+      setIsSearching(false);
+    });
 
     newSocket.on('match:error', (error) => {
       console.error('❌ Match error:', error);
-      setError(new Error(error.message || 'Eşleşme sırasında bir hata oluştu.'));
-        setIsSearching(false);
+      setError(new Error(error.message || 'An error occurred during matching.'));
+      setIsSearching(false);
     });
 
-    // WebRTC olaylarını dinle
     newSocket.on('webrtc:offer', (data) => {
       console.log('📥 Received WebRTC offer:', data);
       if (!data.offer || !data.from) {
         console.error('Invalid offer data received:', data);
         return;
       }
-      // VideoContext'te işlenecek
     });
 
     newSocket.on('webrtc:answer', (data) => {
@@ -330,7 +306,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         console.error('Invalid answer data received:', data);
         return;
       }
-      // VideoContext'te işlenecek
     });
 
     newSocket.on('webrtc:ice-candidate', (data) => {
@@ -339,25 +314,24 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         console.error('Invalid ICE candidate data received:', data);
         return;
       }
-      // VideoContext'te işlenecek
     });
 
     setSocket(newSocket);
 
-      return () => {
+    return () => {
       console.log('Cleaning up socket connection');
       if (reconnectTimeout.current) {
         clearTimeout(reconnectTimeout.current);
       }
       if (socketRef.current) {
         socketRef.current.close();
-    }
+      }
     };
   }, []);
 
   const startSearching = useCallback((preferences?: MatchPreferences) => {
     if (!socket || !isConnected) {
-      setError(new Error('Socket bağlantısı mevcut değil.'));
+      setError(new Error('No socket connection available.'));
       return;
     }
 
@@ -367,16 +341,19 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     };
 
     setError(null);
-      setIsSearching(true);
+    setIsSearching(true);
     setCurrentMatch(null);
 
     console.log('Starting match search with preferences:', preferences || defaultPreferences);
     socket.emit('match:search', preferences || defaultPreferences);
   }, [socket, isConnected]);
 
-  const cancelSearch = useCallback(() => {
-    if (!socket || !isConnected) return;
+  const stopSearching = useCallback(() => {
+    if (!socket || !isConnected) {
+      return;
+    }
 
+    console.log('Stopping match search');
     socket.emit('match:cancel');
     setIsSearching(false);
     setCurrentMatch(null);
@@ -413,17 +390,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     });
     setCurrentMatch(null);
   }, [socket, isConnected, currentMatch]);
-
-  const stopSearching = useCallback(() => {
-    if (!socket || !isConnected) {
-      return;
-    }
-
-    console.log('Stopping match search');
-      socket.emit('match:cancel');
-    setIsSearching(false);
-    setCurrentMatch(null);
-  }, [socket, isConnected]);
 
   return (
     <SocketContext.Provider 
