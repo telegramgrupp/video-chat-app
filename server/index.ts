@@ -39,10 +39,12 @@ const allowedOrigins = [
   'http://127.0.0.1:3000',
   'https://127.0.0.1:3000',
   process.env.CLIENT_URL,
-  // Add WebContainer origin pattern
-  /.*\.webcontainer\.io$/,
+  // Add WebContainer origin pattern - more permissive to handle dynamic subdomains
+  /.+\.webcontainer\.io$/,
   // Add development pattern
-  /https?:\/\/localhost(:\d+)?$/
+  /https?:\/\/localhost(:\d+)?$/,
+  // Allow all WebContainer origins during development
+  /.+\.local-credentialless\.webcontainer-api\.io$/
 ].filter(Boolean);
 
 // Enhanced CORS configuration with specific origins
@@ -83,7 +85,13 @@ app.use(express.json());
 app.options('*', cors(corsOptions));
 
 // Initialize Socket.IO with CORS settings
-const io = initializeSocket(httpServer, corsOptions);
+const io = initializeSocket(httpServer, {
+  ...corsOptions,
+  allowRequest: (req, callback) => {
+    // Allow all requests during development
+    callback(null, true);
+  }
+});
 
 // Enhanced error handling and logging middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
