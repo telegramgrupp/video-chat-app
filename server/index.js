@@ -7,10 +7,8 @@ import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { initializeSocket } from './src/socket.js';
 
-// Load environment variables
 dotenv.config();
 
-// Log environment variables
 console.log('Environment Variables Check:');
 console.log('CLIENT_URL:', process.env.CLIENT_URL);
 console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
@@ -22,13 +20,11 @@ const __dirname = dirname(__filename);
 const app = express();
 const httpServer = createServer(app);
 
-// Initialize Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Define allowed origins with regex pattern for development URLs
 const allowedOrigins = [
   'http://localhost:5173',
   'https://localhost:5173',
@@ -39,22 +35,18 @@ const allowedOrigins = [
   'http://127.0.0.1:3000',
   'https://127.0.0.1:3000',
   process.env.CLIENT_URL,
-  // Add WebContainer origin pattern
   /.*\.webcontainer\.io$/,
-  // Add development pattern
-  /https?:\/\/localhost(:\d+)?$/
+  /https?:\/\/localhost(:\d+)?$/,
+  /.+\.local-credentialless\.webcontainer-api\.io$/
 ].filter(Boolean);
 
-// Enhanced CORS configuration with specific origins
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) {
       callback(null, true);
       return;
     }
 
-    // Check if the origin matches any allowed origins (including regex patterns)
     const isAllowed = allowedOrigins.some(allowedOrigin => {
       if (allowedOrigin instanceof RegExp) {
         return allowedOrigin.test(origin);
@@ -72,26 +64,21 @@ const corsOptions = {
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'X-Requested-With'],
   credentials: true,
-  maxAge: 86400 // 24 hours
+  maxAge: 86400
 };
 
-// Apply CORS middleware before other routes
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Add preflight handler for all routes
 app.options('*', cors(corsOptions));
 
-// Initialize Socket.IO with CORS settings
 const io = initializeSocket(httpServer, corsOptions);
 
-// Enhanced error handling and logging middleware
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start server with enhanced error handling
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
